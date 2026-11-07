@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SUBMINER — Recon Dashboard</title>
+    <link rel="icon" type="image/x-icon" href="/icon/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/icon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/icon/favicon-16x16.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #050a14;
+            background-image: radial-gradient(circle at 15% 50%, rgba(16, 185, 129, 0.08), transparent 25%),
+                              radial-gradient(circle at 85% 30%, rgba(56, 189, 248, 0.08), transparent 25%),
+                              linear-gradient(to bottom right, #0a1120, #03060c);
+            color: #e2e8f0; 
+            position: relative;
+        }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        
+        /* Hacker Matrix Rain Effect */
+        #matrix-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            opacity: 0.05;
+            pointer-events: none;
+        }
+
+        /* Glassmorphism Panels */
+        .glass-panel { 
+            background: rgba(10, 15, 26, 0.65);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(52, 211, 153, 0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(52,211,153,0.05);
+        }
+
+        /* Top Header specific glass effect */
+        .header-glass {
+            background: rgba(10, 15, 26, 0.7);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(56, 189, 248, 0.15);
+            border-radius: 16px;
+            padding: 1.25rem 1.5rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), inset 0 0 10px rgba(56,189,248,0.05);
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
+        ::-webkit-scrollbar-thumb { background: rgba(16, 185, 129, 0.3); border-radius: 10px; transition: background 0.2s; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(16, 185, 129, 0.6); }
+
+        /* Animations */
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in-up { animation: fadeInUp 0.4s ease-out forwards; }
+        
+        @keyframes pulse-glow { 
+            0%, 100% { box-shadow: 0 0 0 0 rgba(56,189,248,0.4); } 
+            50% { box-shadow: 0 0 0 6px rgba(56,189,248,0); } 
+        }
+
+        @keyframes glitch {
+            0% { text-shadow: 1px 0 0 red, -1px 0 0 cyan; }
+            33% { text-shadow: -1px 0 0 red, 1px 0 0 cyan; }
+            66% { text-shadow: 0.5px 0 0 red, -0.5px 0 0 cyan; }
+            100% { text-shadow: -1px 0 0 red, 1px 0 0 cyan; }
+        }
+        .glitch-text:hover {
+            animation: glitch 0.3s cubic-bezier(.25, .46, .45, .94) both infinite;
+        }
+
+        /* Source Grid States */
+        .src-indicator { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .src-pending { border-color: rgba(255,255,255,0.05); color: #475569; background: rgba(10,15,26,0.5); }
+        .src-running { 
+            border-color: rgba(56,189,248,0.4); color: #38bdf8; 
+            background: rgba(56,189,248,0.05);
+            animation: pulse-glow 2s infinite;
+        }
+        .src-done { border-color: rgba(52,211,153,0.4); color: #34d399; background: rgba(52,211,153,0.05); }
+        .src-failed { border-color: rgba(248,113,113,0.4); color: #f87171; background: rgba(248,113,113,0.05); }
+
+        /* Live Status Badges */
+        .live-status { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 700; letter-spacing: 0.05em; flex-shrink: 0; }
+        .s2xx { background: rgba(52,211,153,0.15); color: #34d399; border: 1px solid rgba(52,211,153,0.2); }
+        .s3xx { background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.2); }
+        .s4xx { background: rgba(248,113,113,0.15); color: #f87171; border: 1px solid rgba(248,113,113,0.2); }
+        .s5xx { background: rgba(167,139,250,0.15); color: #a78bfa; border: 1px solid rgba(167,139,250,0.2); }
+
+        /* Export Menu */
+        .export-wrap { position: relative; }
+        .export-menu {
+            display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 50;
+            min-width: 180px; background: rgba(10, 15, 26, 0.95); backdrop-filter: blur(16px);
+            border: 1px solid rgba(52,211,153,0.2);
+            border-radius: 8px; padding: 4px; box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            animation: fadeInUp 0.15s ease-out;
+        }
+        .export-menu.open { display: block; }
+        .export-item {
+            display: block; width: 100%; text-align: left; padding: 8px 12px;
+            font-size: 11px; font-weight: 500; color: #94a3b8; border-radius: 6px;
+            cursor: pointer; transition: all 0.15s; border: none; background: none;
+        }
+        .export-item:hover { background: rgba(52,211,153,0.15); color: #e2e8f0; }
+        .export-divider { height: 1px; background: rgba(52,211,153,0.1); margin: 4px 0; }
+
+        /* Modal Overlay */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(10px);
+            z-index: 100; display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+        }
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+        .modal-content {
+            background: rgba(10, 15, 26, 0.9); border: 1px solid rgba(52,211,153,0.4);
+            border-radius: 16px; padding: 2rem; max-width: 400px; width: 90%;
+            text-align: center; transform: scale(0.95); transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 40px rgba(52,211,153,0.15);
+            backdrop-filter: blur(20px);
+        }
+        .modal-overlay.active .modal-content { transform: scale(1); }
+
+        .terminal-text { color: #34d399; }
+    </style>
+</head>
+<body class="h-screen flex flex-col p-4 md:p-6 gap-4 overflow-hidden relative">
+
+    <!-- Hacker Matrix Background -->
+    <canvas id="matrix-canvas"></canvas>
+
+    <!-- Header -->
+    <div class="header-glass flex flex-col md:flex-row items-center justify-between gap-4 max-w-7xl mx-auto w-full animate-fade-in-up shrink-0 z-10 relative">
+        <div>
+            <h1 class="text-3xl md:text-4xl font-bold bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent tracking-tight glitch-text cursor-default">SUBMINER</h1>
+            <p class="text-slate-400 text-sm mt-1 font-medium mono">> Multi-Source Passive Subdomain Enumeration_</p>
+        </div>
+        <form id="scanForm" class="flex gap-2 w-full md:w-auto relative">
+            <input type="text" id="domainInput" placeholder="example.com" autocomplete="off"
+                class="glass-panel rounded-lg px-4 py-2.5 mono text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 w-full md:w-72 placeholder-slate-500 transition-all border-emerald-500/20 hover:border-emerald-500/40 bg-black/40 text-emerald-100" required>
+            <button type="submit" id="scanBtn"
+                class="bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 active:scale-95 px-6 py-2.5 rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-900/30 whitespace-nowrap border border-emerald-400/30 mono">
+                [ INIT ]
+            </button>
+            <button type="button" id="stopBtn" onclick="stopScan()"
+                class="hidden bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 active:scale-95 px-6 py-2.5 rounded-lg font-semibold transition-all shadow-lg shadow-red-900/30 whitespace-nowrap border border-red-500/40 mono">
+                [ ABORT ]
+            </button>
+        </form>
+    </div>
+
+    <!-- Source Status Grid -->
+    <div id="sourceGrid" class="max-w-7xl mx-auto w-full grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-10 gap-2 hidden animate-fade-in-up shrink-0 z-10 relative" style="animation-delay: 0.1s;"></div>
+
+    <!-- Main Content Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-7xl mx-auto w-full flex-1 min-h-0 animate-fade-in-up z-10 relative" style="animation-delay: 0.2s;">
+
+        <!-- Left: Terminal Logs -->
+        <div class="glass-panel rounded-xl p-0 flex flex-col h-full overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-emerald-500/10 bg-black/20 shrink-0">
+                <div class="flex items-center gap-2">
+                    <div id="statusDot" class="w-2 h-2 rounded-full bg-slate-600 transition-colors duration-300"></div>
+                    <h2 class="mono text-xs font-bold text-emerald-400 uppercase tracking-wider">> /var/log/recon.log</h2>
+                </div>
+                <span class="text-[10px] text-emerald-600/60 mono bg-emerald-900/20 px-2 py-0.5 rounded border border-emerald-500/10">MAX 100 LINES</span>
+            </div>
+            <div id="terminal" class="flex-1 overflow-y-auto mono text-[11px] space-y-1 p-4 scroll-smooth break-all bg-black/40">
+                <div class="text-emerald-700 italic select-none">Waiting for target specification...</div>
+            </div>
+        </div>
+
+        <!-- Right: Results -->
+        <div class="flex flex-col gap-6 h-full min-h-0">
+            
+            <!-- Live Subdomains -->
+            <div class="glass-panel rounded-xl p-0 flex flex-col flex-1 min-h-0 overflow-hidden">
+                <div class="flex justify-between items-center px-4 py-3 border-b border-emerald-500/10 bg-black/20 shrink-0">
+                    <h2 class="text-emerald-400 font-semibold flex items-center gap-2 text-sm mono">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        [ LIVE_HOSTS ]
+                        <span id="liveBadge" class="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono shadow-[0_0_8px_rgba(52,211,153,0.3)]">0</span>
+                    </h2>
+                    <div class="flex items-center gap-2">
+                        <button onclick="copyToClipboard(event, 'live')" class="copy-btn text-[10px] border border-emerald-800 hover:border-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 bg-black/40 mono text-emerald-600">
+                             COPY
+                        </button>
+                        <div class="export-wrap">
+                            <button onclick="toggleExportMenu(event, 'live')" class="export-btn text-[10px] border border-emerald-800 hover:border-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 bg-black/40 mono text-emerald-600">
+                                EXPORT ▾
+                            </button>
+                            <div id="export-menu-live" class="export-menu">
+                                <button class="export-item" onclick="exportData('live','txt','urls')">TXT — URLs</button>
+                                <button class="export-item" onclick="exportData('live','json','urls')">JSON — URLs</button>
+                                <div class="export-divider"></div>
+                                <button class="export-item" onclick="exportData('live','txt','details')">TXT — Details</button>
+                                <button class="export-item" onclick="exportData('live','json','details')">JSON — Details</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="liveList" class="flex-1 overflow-y-auto space-y-1 p-4 mono text-xs pr-2 break-all bg-black/30"></div>
+            </div>
+
+            <!-- All Discovered Subdomains -->
+            <div class="glass-panel rounded-xl p-0 flex flex-col flex-1 min-h-0 overflow-hidden">
+                <div class="flex justify-between items-center px-4 py-3 border-b border-cyan-500/10 bg-black/20 shrink-0">
+                    <h2 class="text-cyan-400 font-semibold flex items-center gap-2 text-sm mono">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        [ DISCOVERED ]
+                        <span id="subBadge" class="text-[10px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-2 py-0.5 rounded-full font-mono shadow-[0_0_8px_rgba(34,211,238,0.3)]">0</span>
+                    </h2>
+                    <div class="flex items-center gap-2">
+                        <button onclick="copyToClipboard(event, 'subs')" class="copy-btn text-[10px] border border-cyan-800 hover:border-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/20 px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 bg-black/40 mono text-cyan-600">
+                            COPY
+                        </button>
+                        <div class="export-wrap">
+                            <button onclick="toggleExportMenu(event, 'subs')" class="export-btn text-[10px] border border-cyan-800 hover:border-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/20 px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 bg-black/40 mono text-cyan-600">
+                                EXPORT ▾
+                            </button>
+                            <div id="export-menu-subs" class="export-menu">
+                                <button class="export-item" onclick="exportData('subs','txt','urls')">TXT — URLs</button>
+                                <button class="export-item" onclick="exportData('subs','json','urls')">JSON — URLs</button>
+                                <div class="export-divider"></div>
+                                <button class="export-item" onclick="exportData('subs','txt','details')">TXT — Source</button>
+                                <button class="export-item" onclick="exportData('subs','json','details')">JSON — Source</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="subList" class="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 mono text-xs text-slate-300 p-4 pr-2 break-all bg-black/30"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Completion Modal -->
+    <div id="completionModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-emerald-400/40 shadow-[0_0_20px_rgba(52,211,153,0.4)]">
+                <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+            </div>
+            <h3 class="text-xl font-bold text-white mb-2 mono glitch-text">SYSTEM_COMPLETE</h3>
+            <p class="text-slate-400 text-sm mb-6 mono">Reconnaissance for <span id="modalDomain" class="text-cyan-400 font-bold"></span> finished.</p>
+            
+            <div class="grid grid-cols-2 gap-3 mb-6">
+                <div class="bg-black/40 rounded-lg p-3 border border-cyan-500/20 shadow-inner">
+                    <div class="text-2xl font-bold text-cyan-400 mono" id="modalSubCount">0</div>
+                    <div class="text-[10px] text-cyan-600 uppercase tracking-wider mt-1 mono">SUBS_FOUND</div>
+                </div>
+                <div class="bg-black/40 rounded-lg p-3 border border-emerald-500/20 shadow-inner">
+                    <div class="text-2xl font-bold text-emerald-400 mono" id="modalLiveCount">0</div>
+                    <div class="text-[10px] text-emerald-600 uppercase tracking-wider mt-1 mono">LIVE_HOSTS</div>
+                </div>
+            </div>
+
+            <button onclick="closeModal()" class="w-full bg-emerald-900/40 hover:bg-emerald-800/60 text-emerald-300 font-medium py-2.5 rounded-lg transition-colors border border-emerald-500/30 shadow-lg mono">
+                [ ACKNOWLEDGE ]
+            </button>
+        </div>
+    </div>
+
+<script>
+// --- Hacker Matrix Effect ---
+const canvas = document.getElementById('matrix-canvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+const letters = '01';
+const fontSize = 14;
+const columns = canvas.width / fontSize;
+const drops = [];
+for (let x = 0; x < columns; x++) drops[x] = 1;
+
+function drawMatrix() {
+    ctx.fillStyle = 'rgba(5, 10, 20, 0.05)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#0f0';
+    ctx.font = fontSize + 'px monospace';
+    for (let i = 0; i < drops.length; i++) {
+        const text = letters.charAt(Math.floor(Math.random() * letters.length));
+        ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+        if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
+        drops[i]++;
+    }
+}
+setInterval(drawMatrix, 50);
+
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
+
+// --- Main App Logic ---
+const MAX_LOG_LINES = 100;
+const SOURCES = ['hackertarget','urlscan','crtsh','jldc','certspotter','rapiddns','dnsrepo','subfinder','wayback','httpx'];
+const SOURCE_LABELS = {
+    hackertarget: 'HackerTarget', urlscan: 'URLScan', crtsh: 'crt.sh',
+    jldc: 'Anubis', certspotter: 'CertSpotter', rapiddns: 'RapidDNS',
+    dnsrepo: 'DNSRepo', subfinder: 'Subfinder', wayback: 'Wayback', httpx: 'Httpx'
+};
+
+// State management
+let abortController = null;
+let activeScanId = null;
+const state = { subs: new Map(), live: [], logCount: 0 };
+const els = {
+    form: document.getElementById('scanForm'),
+    terminal: document.getElementById('terminal'),
+    subList: document.getElementById('subList'),
+    liveList: document.getElementById('liveList'),
+    statusDot: document.getElementById('statusDot'),
+    scanBtn: document.getElementById('scanBtn'),
+    stopBtn: document.getElementById('stopBtn'),
+    subBadge: document.getElementById('subBadge'),
+    liveBadge: document.getElementById('liveBadge'),
+    domainInput: document.getElementById('domainInput'),
+    sourceGrid: document.getElementById('sourceGrid'),
+    modal: document.getElementById('completionModal'),
+    modalDomain: document.getElementById('modalDomain'),
+    modalSubCount: document.getElementById('modalSubCount'),
+    modalLiveCount: document.getElementById('modalLiveCount')
+};
+
+function initSourceGrid() {
+    els.sourceGrid.replaceChildren();
+    for (const source of SOURCES) {
+        const item = document.createElement('div');
+        item.id = `src-${source}`;
+        item.className = 'src-indicator src-pending glass-panel rounded-lg p-3 flex flex-col items-center justify-center gap-1 text-center border min-h-[60px]';
+        const label = document.createElement('span');
+        label.className = 'text-[10px] font-bold uppercase tracking-wider truncate w-full px-1 mono';
+        label.textContent = SOURCE_LABELS[source];
+        const status = document.createElement('span');
+        status.className = 'src-status text-[10px] mono font-medium';
+        status.textContent = 'WAITING';
+        item.append(label, status);
+        els.sourceGrid.appendChild(item);
+    }
+    els.sourceGrid.classList.remove('hidden');
+}
+
+els.form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const domain = els.domainInput.value.trim().toLowerCase();
+    if (domain) startScan(domain);
+});
+
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.export-wrap')) {
+        document.querySelectorAll('.export-menu').forEach(m => m.classList.remove('open'));
+    }
+});
+
+function toggleExportMenu(e, type) {
+    e.stopPropagation();
+    const menu = document.getElementById(`export-menu-${type}`);
+    document.querySelectorAll('.export-menu').forEach(m => { if (m !== menu) m.classList.remove('open'); });
+    menu.classList.toggle('open');
+}
+
+function makeScanId() {
+    if (window.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    const hex = () => Math.floor(Math.random() * 16).toString(16);
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.floor(Math.random() * 16);
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+}
+
+function startScan(domain) {
+    if (abortController) abortController.abort();
+    activeScanId = makeScanId();
+    state.subs.clear(); state.live = []; state.logCount = 0;
+    els.terminal.replaceChildren();
+    const initialLog = document.createElement('div');
+    initialLog.className = 'text-emerald-700 italic select-none';
+    initialLog.textContent = 'Initializing sequence...';
+    els.terminal.appendChild(initialLog);
+    els.subList.replaceChildren();
+    els.liveList.replaceChildren();
+    updateBadges();
+    
+    els.statusDot.className = 'pulse-dot w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]';
+    els.scanBtn.disabled = true;
+    els.scanBtn.textContent = '[ SCANNING ]';
+    els.stopBtn.classList.remove('hidden');
+    initSourceGrid();
+    closeModal();
+
+    abortController = new AbortController();
+
+    fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, scan_id: activeScanId }),
+        signal: abortController.signal
+    }).then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        function pump() {
+            reader.read().then(({ done, value }) => {
+                if (done) {
+                    finalizeScan(domain);
+                    return;
+                }
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+                
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try { handleEvent(JSON.parse(line.slice(6))); } catch(e) {}
+                    }
+                }
+                pump();
+            }).catch(err => {
+                if (err.name === 'AbortError') {
+                    addLog('USER_ABORTED.', 'warn');
+                    resetUIState(false);
+                } else {
+                    addLog(`STREAM_ERR: ${err.message}`, 'error');
+                    resetUIState(false);
+                }
+            });
+        }
+        pump();
+    }).catch(err => {
+        if (err.name === 'AbortError') {
+            addLog('USER_ABORTED.', 'warn');
+            resetUIState(false);
+        } else {
+            addLog(`CONN_ERR: ${err.message}`, 'error');
+            resetUIState(false);
+        }
+    });
+}
+
+window.stopScan = async function() {
+    try {
+        if (activeScanId) {
+            await fetch('/api/stop', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scan_id: activeScanId })
+            });
+        }
+    } catch (e) {
+        console.warn("Stop req failed:", e);
+    }
+    
+    if (abortController) abortController.abort();
+    abortController = null;
+    activeScanId = null;
+    addLog('STOP_REQUESTED.', 'warn');
+    resetUIState(false);
+};
+
+function resetUIState(isComplete) {
+    if (isComplete) {
+        els.statusDot.className = 'w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(52,211,153,0.6)]';
+    } else {
+        els.statusDot.className = 'w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(248,113,113,0.6)]';
+    }
+    els.scanBtn.disabled = false;
+    els.scanBtn.textContent = '[ INIT ]';
+    els.stopBtn.classList.add('hidden');
+}
+
+function finalizeScan(domain) {
+    abortController = null;
+    activeScanId = null;
+    const httpxEl = document.getElementById('src-httpx');
+    const httpxStatus = httpxEl?.querySelector('.src-status')?.textContent || '';
+    if (httpxStatus === 'WAITING' || httpxStatus === 'RUNNING') {
+        updateSourceStatus('httpx', 'done', state.live.length);
+    }
+    resetUIState(true);
+    addLog('SEQ_COMPLETE.', 'info');
+    playSuccessSound();
+    showModal(domain);
+}
+
+function handleEvent(event) {
+    switch(event.type) {
+        case 'log': addLog(event.msg, event.level); break;
+        case 'subdomain': addSubdomain(event.data, event.source); break;
+        case 'live': addLiveHost(event.data, event.status, event.title); break;
+        case 'source_status': updateSourceStatus(event.source, event.state, event.count); break;
+        case 'discovery_done': 
+            addLog(`DISCOVERY_END: ${event.total} unique from ${event.sources_hit} sources`, 'info');
+            break;
+        case 'done': break;
+    }
+}
+
+function updateSourceStatus(source, stateName, count) {
+    const el = document.getElementById(`src-${source}`);
+    if (!el) return;
+    el.className = `src-indicator src-${stateName} glass-panel rounded-lg p-3 flex flex-col items-center justify-center gap-1 text-center border min-h-[60px]`;
+    const statusEl = el.querySelector('.src-status');
+    if (stateName === 'done') {
+        statusEl.textContent = count !== undefined && count > 0 ? `${count} OK` : 'DONE';
+    } else if (stateName === 'failed') {
+        statusEl.textContent = 'ERR';
+    } else if (stateName === 'running') {
+        statusEl.textContent = 'RUNNING';
+    } else {
+        statusEl.textContent = 'WAITING';
+    }
+}
+
+function addLog(msg, level = 'info') {
+    const div = document.createElement('div');
+    div.className = 'log-entry break-all leading-relaxed border-l pl-2 py-0.5';
+    
+    const colors = { 
+        info: 'border-emerald-500/30 text-emerald-400',
+        warn: 'border-yellow-500/50 text-yellow-300',
+        error: 'border-red-500/50 text-red-400'
+    };
+    div.classList.add(...colors[level]?.split(' ') || colors.info.split(' '));
+    
+    const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    const timestamp = document.createElement('span');
+    timestamp.className = 'text-emerald-700 mr-2';
+    timestamp.textContent = `[${time}]`;
+    div.append(timestamp, document.createTextNode(String(msg ?? '')));
+    
+    els.terminal.appendChild(div);
+    state.logCount++;
+    while (state.logCount > MAX_LOG_LINES && els.terminal.firstChild) {
+        els.terminal.removeChild(els.terminal.firstChild);
+        state.logCount--;
+    }
+    const threshold = 100;
+    if (els.terminal.scrollHeight - els.terminal.scrollTop - els.terminal.clientHeight < threshold) {
+        els.terminal.scrollTop = els.terminal.scrollHeight;
+    }
+}
+
+function addSubdomain(sub, source) {
+    if (state.subs.has(sub)) return;
+    state.subs.set(sub, source);
+    updateBadges();
+    
+    const div = document.createElement('div');
+    div.className = 'hover:text-cyan-300 hover:bg-cyan-900/20 px-2 py-1 rounded transition-colors cursor-default break-all text-cyan-500';
+    const marker = document.createElement('span');
+    marker.className = 'text-slate-600 mr-1';
+    marker.textContent = '>';
+    div.append(marker, document.createTextNode(String(sub)));
+    div.title = `SRC: ${SOURCE_LABELS[source] || source}`;
+    els.subList.appendChild(div);
+}
+
+function addLiveHost(url, status, title) {
+    if (state.live.some(h => h.url === url)) return;
+    let parsed;
+    try {
+        parsed = new URL(url);
+        if (!['http:', 'https:'].includes(parsed.protocol)) return;
+    } catch {
+        return;
+    }
+    state.live.push({ url: parsed.href, status: status || '', title: title || '' });
+    updateBadges();
+
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-3 py-1.5 px-2 hover:bg-emerald-900/20 rounded transition-colors group';
+    const code = Number.parseInt(status, 10);
+    let statusClass = '';
+    if (code >= 200 && code < 300) statusClass = 's2xx';
+    else if (code >= 300 && code < 400) statusClass = 's3xx';
+    else if (code >= 400 && code < 500) statusClass = 's4xx';
+    else if (code >= 500) statusClass = 's5xx';
+
+    if (status) {
+        const badge = document.createElement('span');
+        badge.className = `live-status ${statusClass}`;
+        badge.textContent = `[${status}]`;
+        row.appendChild(badge);
+    }
+    const link = document.createElement('a');
+    link.href = parsed.href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.className = 'block break-all text-emerald-400 hover:text-emerald-200 hover:underline transition-all flex-1 min-w-0 font-medium';
+    link.textContent = parsed.href;
+    row.appendChild(link);
+
+    if (title) {
+        const titleNode = document.createElement('span');
+        titleNode.className = 'text-[10px] text-emerald-700 break-words max-w-[200px] group-hover:text-emerald-500 transition-colors';
+        titleNode.textContent = String(title);
+        titleNode.title = String(title);
+        row.appendChild(titleNode);
+    }
+    els.liveList.prepend(row);
+}
+
+function updateBadges() {
+    els.subBadge.textContent = state.subs.size;
+    els.liveBadge.textContent = state.live.length;
+}
+
+function playSuccessSound() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'square'; // More "hacker" sound
+        osc.frequency.setValueAtTime(440, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.3);
+    } catch (e) {
+        console.warn("Audio fail:", e);
+    }
+}
+
+function showModal(domain) {
+    els.modalDomain.textContent = domain;
+    els.modalSubCount.textContent = state.subs.size;
+    els.modalLiveCount.textContent = state.live.length;
+    els.modal.classList.add('active');
+}
+
+window.closeModal = function() {
+    els.modal.classList.remove('active');
+};
+
+window.copyToClipboard = async function(e, type) {
+    const btn = e?.currentTarget;
+    let content = '';
+    if (type === 'subs') {
+        content = [...state.subs.keys()].sort().join('\n');
+    } else {
+        content = state.live.map(h => h.url).join('\n');
+    }
+    if (!content) return;
+    try {
+        await navigator.clipboard.writeText(content);
+    } catch {
+        const ta = document.createElement('textarea');
+        ta.value = content; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+        document.body.removeChild(ta);
+    }
+    if (btn) {
+        const orig = btn.textContent;
+        btn.classList.add('!border-emerald-400', '!text-emerald-200', '!bg-emerald-900/40');
+        btn.textContent = 'COPIED';
+        setTimeout(() => {
+            btn.classList.remove('!border-emerald-400', '!text-emerald-200', '!bg-emerald-900/40');
+            btn.textContent = orig;
+        }, 2000);
+    }
+};
+
+window.exportData = function(type, format, mode) {
+    document.querySelectorAll('.export-menu').forEach(m => m.classList.remove('open'));
+    const domain = els.domainInput.value.trim().toLowerCase().replace(/[^a-z0-9.-]/g, '_') || 'recon';
+    let filename, content, mime;
+
+    if (type === 'subs') {
+        const entries = [...state.subs.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+        if (!entries.length) return;
+        if (mode === 'urls') {
+            filename = `${domain}_subdomains.${format}`;
+            content = format === 'json' ? JSON.stringify(entries.map(([s])=>s), null, 2) : entries.map(([s])=>s).join('\n');
+        } else {
+            filename = `${domain}_subdomains_detailed.${format}`;
+            if (format === 'json') {
+                content = JSON.stringify(entries.map(([s, src]) => ({ subdomain: s, source: SOURCE_LABELS[src]||src })), null, 2);
+            } else {
+                content = entries.map(([s, src]) => `${s}\t${SOURCE_LABELS[src]||src}`).join('\n');
+            }
+        }
+    } else {
+        if (!state.live.length) return;
+        if (mode === 'urls') {
+            filename = `${domain}_live_hosts.${format}`;
+            content = format === 'json' ? JSON.stringify(state.live.map(h=>h.url), null, 2) : state.live.map(h=>h.url).join('\n');
+        } else {
+            filename = `${domain}_live_hosts_detailed.${format}`;
+            if (format === 'json') {
+                content = JSON.stringify(state.live, null, 2);
+            } else {
+                content = state.live.map(h => {
+                    const parts = [h.url];
+                    if (h.status) parts.push(`[${h.status}]`);
+                    if (h.title) parts.push(`[${h.title}]`);
+                    return parts.join(' ');
+                }).join('\n');
+            }
+        }
+    }
+
+    mime = format === 'json' ? 'application/json' : 'text/plain';
+    const blob = new Blob([content], { type: mime });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+};
+</script>
+</body>
+</html>
